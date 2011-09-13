@@ -1,0 +1,13 @@
+{application, l10n,
+ [
+  {description, ""},
+  {vsn, "1"},
+  {registered, []},
+  {applications, [
+                  kernel,
+                  stdlib,
+				  i18n
+                 ]},
+  {mod, { l10n_app, []}},
+  {env, []}
+ ]}.

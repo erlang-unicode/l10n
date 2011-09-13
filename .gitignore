@@ -1,0 +1,7 @@
+ebin
+*.swp
+*.dump
+*.trace  
+*.o
+*.so
+*.dll
