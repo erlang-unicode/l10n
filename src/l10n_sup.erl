@@ -48,10 +48,9 @@ start_link() ->
 %% ===================================================================
 
 init([]) ->
-    % Provide a global dictionary for this node.
-    DefaultWorker = {l10n_locale_server,
-        {l10n_locale_server, start_link, []},
-        permanent, 10000, worker, [l10n_locale_server]},
+    SpawnWorker = {l10n_spawn_server,
+        {l10n_spawn_server, start_link, []},
+        permanent, 10000, worker, []},
 
-    {ok, { {one_for_one, 5, 10}, []} }.
+    {ok, { {one_for_all, 5, 10}, [SpawnWorker]} }.
 
