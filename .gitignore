@@ -3,5 +3,4 @@ ebin
 *.dump
 *.trace  
 *.o
-*.so
-*.dll
+.eunit

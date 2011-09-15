@@ -26,8 +26,9 @@
 
 -export([start_link/0]).
 -export([init/1, terminate/2, 
-    handle_call/3]).
--export([find_store/1]).
+    handle_call/3, handle_cast/2]).
+%% Exported Client Functions
+-export([find_table/1, find_store/1, reg/3]).
 
 -behavior(gen_server).
 
@@ -35,7 +36,6 @@
 -define(CFG_TBLNAME_TABLES, 'l10n_tables').
 
 
-%% Exported Client Functions
 %% Operation & Maintenance API
 start_link() ->
     Arguments = [],
@@ -43,18 +43,28 @@ start_link() ->
     gen_server:start_link({local, ?MODULE}, ?MODULE, Arguments, Opts).
 
 init([]) ->
-    E = ets:new(?CFG_TABLE_NAME, [{read_concurrency, true}, named_table]),
+    ets:new(?CFG_TBLNAME_STORES, [{read_concurrency, true}, named_table]),
+    ets:new(?CFG_TBLNAME_TABLES, [{read_concurrency, true}, named_table]),
     {ok, []}.
 
 terminate(_Reason, _LoopData) ->
     ok.
 
 
-handle_call({spawn_store, Locale}, _From, LoopData) ->
-    {ok, Pid} = l10n_store_server:start_link(Locale),
-    
-    Reply = ets:insert(?CFG_TABLE_NAME, {Locale, Pid}),
+handle_call({spawn_store, Key}, _From, LoopData) ->
+    Reply = Pid = spawn_store(Key),
+%   waiter:subscribe(Pid),
+
+    ets:insert(?CFG_TBLNAME_TABLES, {Key, Pid}),
     {reply, Reply, LoopData}.
+
+
+handle_cast({reg, Key, Table, Pid}, LoopData) ->
+    erlang:link(Pid),
+
+    ets:insert(?CFG_TBLNAME_STORES, {Key, Pid}),
+    ets:insert(?CFG_TBLNAME_TABLES, {Key, Table}),
+    {noreply, LoopData}.
 
     
 %%
@@ -62,17 +72,49 @@ handle_call({spawn_store, Locale}, _From, LoopData) ->
 %%
 
 find_store(Locale) ->
-    lookup(?CFG_TBLNAME_STORES, Locale).
-find_table(Locale) ->
-    lookup(?CFG_TBLNAME_TABLES, Locale).
+    case lookup(?CFG_TBLNAME_STORES, Locale) of
+    'undefined' ->
+        WaiterPid = try_spawn(Locale),
+        % Wait full initialization
+        {StorePid, _TableId} = waiter:wait(WaiterPid),
+        StorePid;
+    Pid -> Pid
+    end.
 
+find_table(Locale) ->
+    case lookup(?CFG_TBLNAME_TABLES, Locale) of
+    Table when is_integer(Table) -> Table;
+    WaiterPid when is_pid(WaiterPid) -> 
+        {_StorePid, TableId} = waiter:wait(WaiterPid),
+        TableId;
+    'undefined' ->
+        Pid = find_store(Locale),
+        l10n_store_server:get_table(Pid)
+    end.
+        
+
+%%
+%% Server API
+%%
+        
 try_spawn(Locale) ->
     call({spawn_store, Locale}).
-        
+
+reg(Key, Table, Pid) ->
+    gen_server:cast(?MODULE, {reg, Key, Table, Pid}).
+
 
 %%
 %% Helpers
 %%
+
+
+spawn_store(Locale) ->
+    {ok, Pid} = l10n_store_server:start_link(Locale),
+    waiter:spawn(fun() ->
+        TableId = l10n_store_server:get_table(Pid),
+        {Pid, TableId}
+        end).
 
 call(Cmd) ->
     try
@@ -92,10 +134,10 @@ lookup(Table, Key) ->
         error:badarg -> 
         % Server is not running.
         l10n:start(),
-        lookup(Key);
+        lookup(Table, Key);
 
         error:{badmatch, _V} ->
         % Key is not found.
-        try_spawn(Key)
+        'undefined'
     end.
 
