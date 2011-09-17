@@ -1,7 +1,7 @@
 
 -compile({parse_transform, l10n_expand}). 
 
--define(LSTR(X), 
+-define(LTXT(X), 
 	begin
 		L10N_HASH = ct_expand:term( 
 			erlang:phash2(X)
@@ -13,7 +13,7 @@
 		end
 	end).
 
--define(LMSG(X, Params), 
+-define(LFMT(X, Params), 
 	begin
 		L10N_HASH = ct_expand:term(
 			erlang:phash2(X)
