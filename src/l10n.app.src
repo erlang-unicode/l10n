@@ -8,6 +8,5 @@
                   stdlib,
 				  i18n
                  ]},
-  {mod, { l10n_app, []}},
   {env, []}
  ]}.

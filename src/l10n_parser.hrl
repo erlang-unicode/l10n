@@ -3,15 +3,15 @@
      text = [] :: [string()]
     }).
 
--record(macro, 
+-record(l10n_call, 
     {line        :: non_neg_integer(), 
      string = [] :: string(),
-     macro       :: atom()
+     call        :: atom()
     }).
 
 -record(value, 
     {
-     macro   :: atom(),
+     call         :: atom(),
      string  = [] :: string(),
      place   = [] :: iolist(),
      comment = [] :: [string()]

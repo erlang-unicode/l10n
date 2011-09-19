@@ -64,8 +64,10 @@ do_read(F, X=#trans{}, Acc)
     end.
 
 %% @doc If X is valid, then merge it with Acc.
-add(X=#trans{id=[_|_]}, Acc) ->
-    [X|Acc];
+add(X=#trans{id=[_|_], comment=C}, Acc) ->
+    NewC = lists:reverse(C),
+    NewX = X#trans{comment=NewC}, 
+    [NewX|Acc];
 add(_X, Acc) ->
     Acc. % skip
     
@@ -115,14 +117,18 @@ get_reader(Fd) ->
     fun() -> 
         case file:read_line(Fd) of
         % Obsolete translation units
-        {ok, "#~ " ++ Line} ->
-            {ok, get_reader(Fd), Line};
+        {ok, "#~" ++ Line} ->
+            {ok, get_reader(Fd), delete_prefix(Line)};
         {ok, Line} ->
             {ok, get_reader(Fd), Line};
         X -> 
             X
         end
     end.
+
+delete_prefix(S) ->
+    S1 = string:strip(S,  left, $\t),
+         string:strip(S1, left, $ ).
 
 proxy_reader(X) ->
     fun() -> X end.

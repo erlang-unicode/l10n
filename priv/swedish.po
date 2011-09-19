@@ -20,6 +20,7 @@ msgstr ""
 
 #: esmb_gettext.erl:13 
 # Happy comment
+# New comment
 msgid "Hello World"
 msgstr "Hej Värld"
 
