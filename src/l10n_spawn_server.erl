@@ -24,120 +24,54 @@
 %%% @private
 -module(l10n_spawn_server).
 
--export([start_link/0]).
+-export([start_link/1]).
 -export([init/1, terminate/2, 
-    handle_call/3, handle_cast/2]).
-%% Exported Client Functions
--export([find_table/1, find_store/1, reg/3]).
+    handle_call/3]).
+%% Exported Client's Functions
+-export([find_store/2]).
 
 -behavior(gen_server).
 
 -define(CFG_TBLNAME_STORES, 'l10n_stores').
--define(CFG_TBLNAME_TABLES, 'l10n_tables').
-
+-record(state, {table, domain}).
 
 %% Operation & Maintenance API
-start_link() ->
-    Arguments = [],
+start_link(Domain) ->
+    Arguments = [Domain],
     Opts = [],
-    gen_server:start_link({local, ?MODULE}, ?MODULE, Arguments, Opts).
+    Name = Domain:get_name('server'),
+    gen_server:start_link({local, Name}, ?MODULE, Arguments, Opts).
 
-init([]) ->
-    ets:new(?CFG_TBLNAME_STORES, [{read_concurrency, true}, named_table]),
-    ets:new(?CFG_TBLNAME_TABLES, [{read_concurrency, true}, named_table]),
-    {ok, []}.
+init([D]) ->
+    E = ets:new(D:get_name('table'), []),
+    {ok, #state{table=E, domain=D}}.
 
 terminate(_Reason, _LoopData) ->
     ok.
 
 
-handle_call({spawn_store, Key}, _From, LoopData) ->
-    Reply = Pid = spawn_store(Key),
-%   waiter:subscribe(Pid),
-
-    ets:insert(?CFG_TBLNAME_TABLES, {Key, Pid}),
+handle_call({'find_store', Locale}, _From, LoopData=#state{table=E}) ->
+    Reply = case ets:lookup(E, Locale) of
+        [{Locale, Pid}] -> Pid;
+        [] -> spawn_store(Locale, LoopData)
+        end,
     {reply, Reply, LoopData}.
-
-
-handle_cast({reg, Key, Table, Pid}, LoopData) ->
-    erlang:link(Pid),
-
-    ets:insert(?CFG_TBLNAME_STORES, {Key, Pid}),
-    ets:insert(?CFG_TBLNAME_TABLES, {Key, Table}),
-    {noreply, LoopData}.
 
     
 %%
 %% API
 %%
 
-find_store(Locale) ->
-    case lookup(?CFG_TBLNAME_STORES, Locale) of
-    'undefined' ->
-        WaiterPid = try_spawn(Locale),
-        % Wait full initialization
-        {StorePid, _TableId} = waiter:wait(WaiterPid),
-        StorePid;
-    Pid -> Pid
-    end.
-
-find_table(Locale) ->
-    case lookup(?CFG_TBLNAME_TABLES, Locale) of
-    Table when is_integer(Table) -> Table;
-    WaiterPid when is_pid(WaiterPid) -> 
-        {_StorePid, TableId} = waiter:wait(WaiterPid),
-        TableId;
-    'undefined' ->
-        Pid = find_store(Locale),
-        l10n_store_server:get_table(Pid)
-    end.
+find_store(Domain, Locale) ->
+    Pid = Domain:get_name('server'),
+    gen_server:call(Pid, {'find_store', Locale}).
         
 
 %%
 %% Server API
 %%
-        
-try_spawn(Locale) ->
-    call({spawn_store, Locale}).
 
-reg(Key, Table, Pid) ->
-    gen_server:cast(?MODULE, {reg, Key, Table, Pid}).
-
-
-%%
-%% Helpers
-%%
-
-
-spawn_store(Locale) ->
-    {ok, Pid} = l10n_store_server:start_link(Locale),
-    waiter:spawn(fun() ->
-        TableId = l10n_store_server:get_table(Pid),
-        {Pid, TableId}
-        end).
-
-call(Cmd) ->
-    try
-        gen_server:call(?MODULE, Cmd)
-    catch
-        exit:{noproc, _Stack} ->
-        l10n:start(),
-        gen_server:call(?MODULE, Cmd)
-    end.
-
-lookup(Table, Key) ->
-    % Key is a locale
-    try
-    [{Key, Value}] = ets:lookup(Table, Key),
-    Value
-    catch
-        error:badarg -> 
-        % Server is not running.
-        l10n:start(),
-        lookup(Table, Key);
-
-        error:{badmatch, _V} ->
-        % Key is not found.
-        'undefined'
-    end.
-
+spawn_store(Locale, #state{table=E, domain=D}) ->
+    {ok, Pid} = l10n_store_server:start_link(D, Locale),
+    ets:insert(E, {Locale, Pid}),
+    Pid.

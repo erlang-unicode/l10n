@@ -46,9 +46,9 @@
 to_pot(Values) ->
 	do_pot(Values, []).
 
-to_ets(PO, Table)
+fold(F, A, PO)
     when is_list(PO) ->
-    do_ets(Table, PO).
+    do_fold(F, A, PO).
 
 %% Merge data.
 to_po(PO, SRC) 
@@ -84,13 +84,13 @@ do_po([], [_|_]=SRC, Acc) ->
 
 
 
-do_ets(E, [H=#trans{id=I, string=[_|_]=S}|T]) ->
-    ets:insert(E, {I, S}),
-    do_ets(T, E);
-do_ets(E, [H=#trans{id=_I, string=[]}|T]) ->
-    do_ets(T, E);
-do_ets(E, []) ->
-    E.
+do_fold(F, [H=#trans{id=I, string=[_|_]=S}|T], A) ->
+    AA = F(A, I, S),
+    do_fold(F, T, AA);
+do_fold(F, [H=#trans{id=_I, string=[]}|T], A) ->
+    do_fold(F, T, A);
+do_fold(F, [], A) ->
+    A.
     
 
 

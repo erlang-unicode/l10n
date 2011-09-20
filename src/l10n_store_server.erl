@@ -24,31 +24,30 @@
 %%% @private
 -module(l10n_store_server).
 
--export([start_link/1]).
+-export([start_link/2]).
+
+%% gen_server handlers
 -export([init/1, terminate/2, 
     handle_call/3, handle_cast/2]).
--export([get_table/1]).
 
+%% API
+-export([get_table/1, update_value/3]).
 
--export([search_format/2, load_format/2]).
--export([search_string/2, load_string/2]).
 
 -behavior(gen_server).
-
--record(state, {table, locale}).
--define(CFG_TABLE_NAME, 'l10n_server_locale_store').
+-record(state, {domain, table, locale}).
 
 %% Exported Client Functions
 %% Operation & Maintenance API
-start_link(Locale) ->
-    Arguments = [Locale],
+start_link(D, L) ->
+    Arguments = [D, L],
     Opts = [],
     gen_server:start_link(?MODULE, Arguments, Opts).
 
-init([Locale]) ->
-    E = ets:new(?CFG_TABLE_NAME, [{'read_concurrency', true}]),
+init([D, L]) ->
+    E = ets:new('l10n_store_table', [{'read_concurrency', true}]),
     init_store(self()),
-    {ok, #state{table=E, locale=Locale}}.
+    {ok, #state{table=E, locale=L, domain=D}}.
 
 terminate(_Reason, _LoopData) ->
     ok.
@@ -59,9 +58,7 @@ handle_call('get_table', _From, LoopData=#state{table=E}) ->
     {'reply', E, LoopData}.
 
 
-handle_cast('init_store', LoopData=#state{table=E, locale=Key}) ->
-
-    l10n_spawn_server:reg(Key, E, self()),
+handle_cast('init_store', LoopData=#state{table=E}) ->
     {'noreply', LoopData};
 handle_cast({'update_value', Key, Value}, LoopData=#state{table=E}) ->
     ets:insert(E, {Key, Value}),
@@ -74,41 +71,11 @@ handle_cast({'update_value', Key, Value}, LoopData=#state{table=E}) ->
 
 get_table(Pid) when is_pid(Pid) ->
     gen_server:call(Pid, 'get_table').
-    
-search_string(Locale, StrHash) ->
-    search(Locale, StrHash).
-    
 
-load_string(Locale, Str) ->
-	Hash = erlang:phash2(Str), 
-    Res = i18n_string:from(Str),
-    Pid = l10n_spawn_server:find_store(Locale),
-    gen_server:cast(Pid, {'update_value', Hash, Res}),
-    Res.
-    
-	
-
-search_format(Locale, StrHash) ->
-    search(Locale, StrHash).
-
-load_format(Locale, Str) ->
-	Hash = erlang:phash2(Str), 
-    UStr = i18n_string:from(Str),
-    Res = i18n_message:open(Locale, UStr),
-    Pid = l10n_spawn_server:find_store(Locale),
-    gen_server:cast(Pid, {'update_value', Hash, Res}),
-    Res.
-
-
-%%
-%% Server API
-%%
-
-init_store(Pid) ->
+init_store(Pid) when is_pid(Pid) ->
     gen_server:cast(Pid, 'init_store').
-	
+    
+update_value(Pid, Key, Value) when is_pid(Pid) ->
+    gen_server:cast(Pid, {'update_value', Key, Value}).
 
-search(Locale, StrHash) ->
-    Table = l10n_spawn_server:find_table(Locale),
-    [{_Key, Value}] = ets:lookup(Table, StrHash),
-    Value.
+

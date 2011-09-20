@@ -23,20 +23,45 @@
 
 -module(l10n_locale).
 -export([set_locale/1, get_locale/0]).
+-export([get_parent_locale/1]).
+-export([add_domain/1]).
 
--define(SERVER, 'l10n_locale_server').
+
+%%
+%% Client API
+%%
 
 set_locale(Value) -> 
     LName = i18n_locale:base_name(Value),
-    erlang:put('l10n_locale', LName),
+    put('l10n_locale', LName),
+    delete_tids(),
     LName.
 
+get_parent_locale(Locale) ->
+    i18n_locale:parent_locale(Locale).
+
 get_locale() ->
-    case erlang:get('l10n_locale') of
-    'undefined' ->
-        % Get a global value
-        Value = i18n_locale:get_locale(),
-        set_locale(Value);
-    Value ->
-        Value
+    case get('l10n_locale') of
+    'undefined' -> 'root';
+    X -> X
     end.
+    
+delete_tids() ->
+    [erase(X) || X <- get_tids()],
+    ok.
+    
+add_domain(Name) ->
+    Ds = get_domains(),
+    case lists:any(fun(X) -> X=:=Name end, Ds) of
+    false -> put('l10n_domains', [Name|Ds]);
+    true  -> ok
+    end.
+
+get_domains() ->
+    case get('l10n_domains') of
+    'undefined' -> [];
+    X -> X
+    end.
+
+get_tids() ->
+    [X:names('table') || X <- get_domains()].
