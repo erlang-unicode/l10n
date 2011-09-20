@@ -26,13 +26,14 @@
 
 -include("l10n_parser.hrl").
 
--record(config, {domain}).
+-record(config, {domain, type}).
 
 %% @doc M is instance of l10n_default.
 parse(M) ->
     Files = M:source_files(),
     D = M:get_name('domain'),
-    C = #config{domain=D},
+    T = M:get_type(),
+    C = #config{domain=D, type=T},
     parse_files(C, Files).
 
 
@@ -73,18 +74,14 @@ parse_epp(C=#config{}, FileName) ->
     {ok, Forms} = epp:parse_file(FileName, [], []),
     fold_epp(C, Forms).
     
-fold_epp(#config{domain=Dom}, Forms) ->
-%{call,6,{atom,6,lll},[{atom,6,'LLL'},{string,6,[115]}]}
-%{l10n_call,{var,Line,Call},[{string,_Line,Str} | _]}
+fold_epp(#config{domain=Dom, type=Call}, Forms) ->
 %{call,5,{remote,5,{atom,5,l10n_format},{atom,5,format}},[{atom,5,default},{string,5,[70]},{nil,5}]}
-
     F = fun({call,_Line,
-                {remote,_Line,{atom,_Line,'l10n_format'},{atom,_Line,Call}},
-                [{atom,_Line,Dom2},{string,Line,Str}|_]}, L) 
-            when (Call =:= 'format' orelse Call =:= 'string')
-             and (Dom =:= Dom2) -> % Lets compiler be happy.
+                {remote,_Line,{atom,_Line,Dom2},{atom,_Line,Call2}},
+                [{string,Line,Str}|_]}, L) 
+             when Call =:= Call2 andalso Dom =:= Dom2 -> % Lets compiler be happy.
             H = #l10n_call{
-                call   = Call, 
+                call   = Call,
                 line   = Line, 
                 string = lists:flatten(Str)}, % flatten, because:
                 % We will search by `string' field in `l10n_export:to_po'
