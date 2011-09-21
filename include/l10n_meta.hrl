@@ -4,6 +4,9 @@
 -export([format/2, string/1]).
 -export([generate/1]).
 
+% Protected
+-export([get_table/1, is_available/1]).
+
 -ifndef(L10N_SERVER).
 -define(L10N_SERVER, ?MODULE).
 -endif.
@@ -61,6 +64,10 @@ get_type() -> ?L10N_TYPE.
 available_locales() ->
 	?L10N_LOCALES.
 
+is_available(L) ->
+	F = get_path('po', L),
+	filelib:is_file(F).
+
 %% @doc Start the store server.
 start_link() ->
 	l10n_spawn_server:start_link(?MODULE).
@@ -107,12 +114,13 @@ search(H, Count)
 		ets:lookup(T, H)
 	catch error:_ ->
 		L = l10n_locale:get_locale(),
-		set_table(L),
+		get_table(L),
 		search(H, Count - 1)
 	end.
 
-%% @doc Put the table id of the data store to the process dictionary.
-set_table(L) ->
+%% @doc Put the locale table id of the data store to the process dictionary.
+%%		Return table id.		
+get_table(L) ->
 	P = l10n_spawn_server:find_store(?MODULE, L),
 	T = l10n_store_server:get_table(P),
 	put(?L10N_TABLE, T),
@@ -120,6 +128,7 @@ set_table(L) ->
 	% this tid will be erased.
 	l10n_locale:add_domain(?MODULE),
 	T.
+
 
 %% @doc Send {Key, Value} to the store server.
 insert(Key, Value) ->

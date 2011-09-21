@@ -50,11 +50,8 @@ terminate(_Reason, _LoopData) ->
     ok.
 
 
-handle_call({'find_store', Locale}, _From, LoopData=#state{table=E}) ->
-    Reply = case ets:lookup(E, Locale) of
-        [{Locale, Pid}] -> Pid;
-        [] -> spawn_store(Locale, LoopData)
-        end,
+handle_call({'find_store', Locale}, _From, LoopData=#state{table=E, domain=D}) ->
+    Reply = lookup_store(Locale, E, D),
     {reply, Reply, LoopData}.
 
     
@@ -71,7 +68,20 @@ find_store(Domain, Locale) ->
 %% Server API
 %%
 
-spawn_store(Locale, #state{table=E, domain=D}) ->
-    {ok, Pid} = l10n_store_server:start_link(D, Locale),
+spawn_store(Locale, E, D) ->
+    Pid = case D:is_available(Locale) of
+        true ->
+            {ok, Pid2} = l10n_store_server:start_link(D, Locale),
+            Pid2;
+        false ->
+            PLocale = l10n_locale:get_parent_locale(Locale),
+            lookup_store(PLocale, E, D)
+        end,
     ets:insert(E, {Locale, Pid}),
     Pid.
+
+lookup_store(Locale, E, D) ->
+    case ets:lookup(E, Locale) of
+    [{Locale, Pid}] -> Pid;
+    [] -> spawn_store(Locale, E, D)
+    end.

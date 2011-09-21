@@ -59,9 +59,17 @@ handle_call('get_table', _From, LoopData=#state{table=E}) ->
 
 
 handle_cast('init_store', LoopData=#state{table=E, domain=D, locale=L}) ->
+    % Get the copy of the parent table
+    case l10n_locale:get_parent_locale(L) of
+    'root' -> ok;
+    X -> From = D:get_table(X),
+        l10n_utils:copy_table(From, E)
+    end,
+
+
     PO = D:get_file('po', L),
-    F = fun(Key, Value, E) -> 
-            ets:insert(E, {l10n_utils:hash(Key), Value})
+    F = fun(Key, Value, EE) -> 
+            ets:insert(EE, {l10n_utils:hash(Key), Value})
         end,
     l10n_export:fold(F, E, PO),
     {'noreply', LoopData};
