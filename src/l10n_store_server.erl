@@ -58,7 +58,12 @@ handle_call('get_table', _From, LoopData=#state{table=E}) ->
     {'reply', E, LoopData}.
 
 
-handle_cast('init_store', LoopData=#state{table=E}) ->
+handle_cast('init_store', LoopData=#state{table=E, domain=D, locale=L}) ->
+    PO = D:get_file('po', L),
+    F = fun(Key, Value, E) -> 
+            ets:insert(E, {l10n_utils:hash(Key), Value})
+        end,
+    l10n_export:fold(F, E, PO),
     {'noreply', LoopData};
 handle_cast({'update_value', Key, Value}, LoopData=#state{table=E}) ->
     ets:insert(E, {Key, Value}),

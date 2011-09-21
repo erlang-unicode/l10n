@@ -31,7 +31,7 @@
 %%% l10n_export:to_po(PO, SRC). '''
 
 -module(l10n_export).
--export([to_pot/1, to_po/2]).
+-export([to_pot/1, to_po/2, fold/3]).
 
 -include("l10n_parser.hrl").
 
@@ -46,9 +46,10 @@
 to_pot(Values) ->
 	do_pot(Values, []).
 
-fold(F, A, PO)
-    when is_list(PO) ->
-    do_fold(F, A, PO).
+fold(F, Acc, PO)
+    when is_list(PO), 
+         is_function(F) ->
+    do_fold(F, Acc, PO).
 
 %% Merge data.
 to_po(PO, SRC) 
@@ -84,12 +85,12 @@ do_po([], [_|_]=SRC, Acc) ->
 
 
 
-do_fold(F, [H=#trans{id=I, string=[_|_]=S}|T], A) ->
-    AA = F(A, I, S),
-    do_fold(F, T, AA);
-do_fold(F, [H=#trans{id=_I, string=[]}|T], A) ->
-    do_fold(F, T, A);
-do_fold(F, [], A) ->
+do_fold(F, A, [H=#trans{id=I, string=[_|_]=S}|T]) ->
+    AA = F(I, S, A),
+    do_fold(F, AA, T);
+do_fold(F, A, [H=#trans{id=_I, string=[]}|T]) ->
+    do_fold(F, A, T);
+do_fold(F, A, []) ->
     A.
     
 

@@ -64,4 +64,4 @@ get_domains() ->
     end.
 
 get_tids() ->
-    [X:names('table') || X <- get_domains()].
+    [X:get_name('table') || X <- get_domains()].
