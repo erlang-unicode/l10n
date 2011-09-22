@@ -28,7 +28,7 @@
 -export([init/1, terminate/2, 
     handle_call/3, handle_info/2]).
 %% Exported Client's Functions
--export([find_store/2]).
+-export([find_store/2, reload_store/2, get_list/1]).
 
 -behavior(gen_server).
 
@@ -53,6 +53,10 @@ terminate(_Reason, _LoopData) ->
 
 handle_call({'find_store', Locale}, _From, LoopData=#state{table=E, domain=D}) ->
     Reply = lookup_store(Locale, E, D),
+    {reply, Reply, LoopData};
+
+handle_call('get_list', _From, LoopData=#state{table=E}) ->
+    Reply = l10n_utils:get_keys(E),
     {reply, Reply, LoopData}.
 
 handle_info({'EXIT', Pid, Reason}, LoopData=#state{table=E}) -> 
@@ -67,6 +71,22 @@ handle_info({'EXIT', Pid, Reason}, LoopData=#state{table=E}) ->
 find_store(Domain, Locale) ->
     Pid = Domain:get_name('server'),
     gen_server:call(Pid, {'find_store', Locale}).
+
+reload_store(Domain, Locale) ->
+    P = find_store(Domain, Locale),
+    case l10n_store_server:get_locale(P) of
+    Locale ->
+        l10n_store_server:stop(P),
+        find_store(Domain, Locale),
+        ok;
+    _ ->
+        'server_is_parent'
+    end.
+    
+
+get_list(Domain) ->
+    Pid = Domain:get_name('server'),
+    gen_server:call(Pid, 'get_list').
         
 
 %%
@@ -93,7 +113,7 @@ spawn_store(Locale, E, D) ->
     Pid.
 
 lookup_store(Locale, E, D) ->
-    case ets:lookup(E, Locale) of
-    [{Locale, Pid}] -> Pid;
-    [] -> spawn_store(Locale, E, D)
+    try ets:lookup_element(E, Locale, 2)
+    catch error:badarg ->
+        spawn_store(Locale, E, D)
     end.

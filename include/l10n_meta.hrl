@@ -26,21 +26,27 @@
 -export([start_link/0]).
 
 -ifdef(L10N_TYPE_FORMAT).
--export([format/2]).
+-export([format/2, format/3]).
 -endif.
 
 -ifdef(L10N_TYPE_STRING).
--export([string/1]).
+-export([string/1, string/2]).
 -endif.
 
--export([generate/1]).
+-export([generate/1, reload/1]).
 -export([string_to_object/1]).
 
 % Protected
--export([is_available/1]).
+-export([is_available/1, available_locales/0, loaded_locales/0]).
 
+% The name of the spawn server.
 -ifndef(L10N_SERVER).
 -define(L10N_SERVER, ?MODULE).
+-endif.
+
+% The name of reloader.
+-ifndef(L10N_RELOADER).
+-define(L10N_RELOADER, list_to_atom(?MODULE_STRING ++ "_reloader")).
 -endif.
 
 -ifndef(L10N_TABLE).
@@ -100,6 +106,7 @@ get_path(Type, Locale) ->
 
 get_name('domain') -> ?MODULE;
 get_name('table')  -> ?L10N_TABLE;
+get_name('reloader')  -> ?L10N_RELOADER;
 get_name('server') -> ?L10N_SERVER.
 
 %% @doc Get the name of l10n_store_server with locale=L.
@@ -116,13 +123,16 @@ get_type() -> ?L10N_TYPE.
 available_locales() ->
 	?L10N_LOCALES.
 
+loaded_locales() ->
+	l10n_spawn_server:get_list(?MODULE).
+
 is_available(L) ->
 	F = get_path('po', L),
 	filelib:is_file(F).
 
 %% @doc Start the store server.
 start_link() ->
-	l10n_spawn_server:start_link(?MODULE).
+	l10n_sup:start_link(?MODULE).
 
 string_to_object(S) ->
     ?L10N_TO_OBJECT(S).
@@ -134,14 +144,8 @@ format(Id, Params) ->
 	format(H, Id, Params).
 
 format(H, Id, Params) ->
-	Fmt = case search(H, 5) of
-		false -> 
-			X = l10n_utils:format(Id), 
-			insert(H, X),
-			X;
-		X -> X
-		end,
-	i18n_message:format(Fmt, Params).
+	Fmt = search(H, 5),
+    i18n_message:format(Fmt, Params).
 -endif.
 	
 -ifdef(L10N_TYPE_STRING).
@@ -152,27 +156,29 @@ string(Id) ->
 %% @doc Try to search a string in the data store.
 %%		If the string is not found, add it.
 string(H, Id) ->
-	?L10N_TYPE = 'string',
-	H = l10n_utils:hash(Id),
-	case search(H, 5) of
-	[] ->
-		X = l10n_utils:string(Id), 
-		insert(H, X),
-		X;
-	[{_,X}] -> X
-	end.
+	search(H, Id, 5).
 -endif.
 
-%% @doc Retrieve Hash(Key) from the data store.
-search(H, Count) 
+%% @doc Search by Key=Hash(Value) in the data store.
+search(Key, Value, Count) 
 	when Count > 0 ->
+	T = get(?L10N_TABLE),
 	try
-		T = get(?L10N_TABLE),
-		ets:lookup(T, H)
-	catch error:_ ->
-		L = l10n_locale:get_locale(),
-		get_table(L),
-		search(H, Count - 1)
+		ets:lookup_element(T, Key, 2) % Search by hash
+
+	catch error:badarg ->
+    	L = l10n_locale:get_locale(),
+        case ets:info(T, 'owner') of
+        'undefined' ->
+            % Reanimate the store
+	    	get_table(L),
+		    search(Key, Value, Count - 1);
+		P ->
+            % Insert {Key, Value}
+            Result = string_to_object(Value),
+	        l10n_store_server:update_value(P, Key, Result),
+            Result
+        end
 	end.
 
 %% @doc Put the locale table id of the data store to the process dictionary.
@@ -186,12 +192,6 @@ get_table(L) ->
 	l10n_locale:add_domain(?MODULE),
 	T.
 
-
-%% @doc Send {Key, Value} to the store server.
-insert(Key, Value) ->
-	L = l10n_locale:get_locale(),
-	P = l10n_spawn_server:find_store(?MODULE, L),
-	l10n_store_server:update_value(P, Key, Value).
 	
 %% @doc Writes parsed data to files.
 generate('pot') ->
@@ -219,3 +219,6 @@ get_file('po', Locale) ->
 	FileName = get_path('po', Locale),
 	l10n_import:from_po(FileName).
 	
+reload(L) ->
+	l10n_spawn_server:reload_store(?MODULE, L).
+    

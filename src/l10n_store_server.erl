@@ -24,18 +24,18 @@
 %%% @private
 -module(l10n_store_server).
 
--export([start_link/2]).
+-export([start_link/2, stop/1]).
 
 %% gen_server handlers
 -export([init/1, terminate/2, 
     handle_call/3, handle_cast/2, handle_info/2]).
 
 %% API
--export([get_table/1, update_value/3]).
+-export([get_table/1, get_locale/1, update_value/3]).
 
 
 -behavior(gen_server).
--record(state, {domain, table, locale}).
+-record(state, {domain, table, locale, ref}).
 
 %% Exported Client Functions
 %% Operation & Maintenance API
@@ -43,6 +43,12 @@ start_link(D, L) ->
     Arguments = [D, L],
     Opts = [],
     gen_server:start_link({local, D:get_store_server_name(L)}, ?MODULE, Arguments, Opts).
+
+%% @spec stop() -> ok
+%% @doc Stop the server.
+stop(Pid) when is_pid(Pid) ->
+    gen_server:call(Pid, 'stop').
+
 
 init([D, L='root']) ->
     E = ets:new('l10n_root_store_table', [{'read_concurrency', true}]),
@@ -59,12 +65,19 @@ terminate(_Reason, _LoopData) ->
 
 
 handle_call('get_table', _From, LoopData=#state{table=E}) ->
-    {'reply', E, LoopData}.
+    {'reply', E, LoopData};
+handle_call('get_locale', _From, LoopData=#state{locale=L}) ->
+    {'reply', L, LoopData};
+
+%% @spec handle_call(Args, From, State) -> tuple()
+%% @doc gen_server callback.
+handle_call('stop', _From, LoopData) ->
+    {stop, shutdown, stopped, LoopData}.
 
 
 handle_cast('init_store', LoopData=#state{table=E, domain=D, locale=L}) ->
     % Get the copy of the parent table
-    case l10n_locale:get_parent_locale(L) of
+    Ref = case l10n_locale:get_parent_locale(L) of
     'root' -> 
         % If the root server was terminated, kill this server
 	    P = l10n_spawn_server:find_store(D, 'root'),
@@ -72,9 +85,9 @@ handle_cast('init_store', LoopData=#state{table=E, domain=D, locale=L}) ->
     X -> 
         % If the parent server was terminated, kill this server
 	    P = l10n_spawn_server:find_store(D, X),
-        erlang:monitor('process', P),
         From = get_table(P),
-        l10n_utils:copy_table(From, E)
+        l10n_utils:copy_table(From, E),
+        erlang:monitor('process', P)
     end,
 
 
@@ -83,12 +96,12 @@ handle_cast('init_store', LoopData=#state{table=E, domain=D, locale=L}) ->
             ets:insert(EE, {l10n_utils:hash(Key), D:string_to_object(Value)})
         end,
     l10n_export:fold(F, E, PO),
-    {'noreply', LoopData};
+    {'noreply', LoopData#state{ref=Ref}};
 handle_cast({'update_value', Key, Value}, LoopData=#state{table=E}) ->
     ets:insert(E, {Key, Value}),
     {'noreply', LoopData}.
 
-handle_info({'DOWN', Ref, 'process', _PPid,  Reason}, LoopData) -> 
+handle_info({'DOWN', Ref, 'process', _PPid,  _Reason}, LoopData=#state{ref=Ref}) -> 
     {'stop', 'normal', LoopData}.
 
 
@@ -98,6 +111,9 @@ handle_info({'DOWN', Ref, 'process', _PPid,  Reason}, LoopData) ->
 
 get_table(Pid) when is_pid(Pid) ->
     gen_server:call(Pid, 'get_table').
+
+get_locale(Pid) when is_pid(Pid) ->
+    gen_server:call(Pid, 'get_locale').
 
 init_store(Pid) when is_pid(Pid) ->
     gen_server:cast(Pid, 'init_store').
