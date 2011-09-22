@@ -1,11 +1,43 @@
+% vim: set filetype=erlang shiftwidth=4 tabstop=4 expandtab tw=80:
 
--export([get_path/2, get_file/2, get_type/0, get_name/1, source_files/0]).
+%%% =====================================================================
+%%%   Copyright 2011 Uvarov Michael 
+%%%
+%%%   Licensed under the Apache License, Version 2.0 (the "License");
+%%%   you may not use this file except in compliance with the License.
+%%%   You may obtain a copy of the License at
+%%%
+%%%       http://www.apache.org/licenses/LICENSE-2.0
+%%%
+%%%   Unless required by applicable law or agreed to in writing, software
+%%%   distributed under the License is distributed on an "AS IS" BASIS,
+%%%   WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+%%%   See the License for the specific language governing permissions and
+%%%   limitations under the License.
+%%%
+%%% $Id$
+%%%
+%%% @copyright 2010-2011 Michael Uvarov
+%%% @author Michael Uvarov <freeakk@gmail.com>
+%%% =====================================================================
+
+-export([get_path/2, get_file/2, get_type/0, get_name/1, source_files/0,
+		get_store_server_name/1]).
 -export([start_link/0]).
--export([format/2, string/1]).
+
+-ifdef(L10N_TYPE_FORMAT).
+-export([format/2]).
+-endif.
+
+-ifdef(L10N_TYPE_STRING).
+-export([string/1]).
+-endif.
+
 -export([generate/1]).
+-export([string_to_object/1]).
 
 % Protected
--export([get_table/1, is_available/1]).
+-export([is_available/1]).
 
 -ifndef(L10N_SERVER).
 -define(L10N_SERVER, ?MODULE).
@@ -16,7 +48,23 @@
 -endif.
 
 -ifndef(L10N_TYPE).
--define(L10N_TYPE, 'string').
+    -ifdef(L10N_TYPE_FORMAT).
+    -define(L10N_TYPE, 'format').
+    -endif.
+
+    -ifdef(L10N_TYPE_STRING).
+    -define(L10N_TYPE, 'string').
+    -endif.
+-endif.
+
+-ifndef(L10N_TO_OBJECT).
+    -ifdef(L10N_TYPE_FORMAT).
+    -define(L10N_TO_OBJECT(X), l10n_utils:format(X)).
+    -endif.
+
+    -ifdef(L10N_TYPE_STRING).
+    -define(L10N_TO_OBJECT(X), l10n_utils:string(X)).
+    -endif.
 -endif.
 
 -ifdef(L10N_APPLICATION).
@@ -54,6 +102,10 @@ get_name('domain') -> ?MODULE;
 get_name('table')  -> ?L10N_TABLE;
 get_name('server') -> ?L10N_SERVER.
 
+%% @doc Get the name of l10n_store_server with locale=L.
+get_store_server_name(L) -> 
+	list_to_atom(lists:flatten([?MODULE_STRING, $[, atom_to_list(L), $]])).
+
 source_files() ->
 	?L10N_SOURCE.
 
@@ -72,8 +124,12 @@ is_available(L) ->
 start_link() ->
 	l10n_spawn_server:start_link(?MODULE).
 
+string_to_object(S) ->
+    ?L10N_TO_OBJECT(S).
+
+
+-ifdef(L10N_TYPE_FORMAT).
 format(Id, Params) ->
-	?L10N_TYPE = 'format',
 	H = l10n_utils:hash(Id),
 	format(H, Id, Params).
 
@@ -86,10 +142,10 @@ format(H, Id, Params) ->
 		X -> X
 		end,
 	i18n_message:format(Fmt, Params).
+-endif.
 	
-
+-ifdef(L10N_TYPE_STRING).
 string(Id) ->
-	?L10N_TYPE = 'string',
 	H = l10n_utils:hash(Id),
 	string(H, Id).
 
@@ -105,6 +161,7 @@ string(H, Id) ->
 		X;
 	[{_,X}] -> X
 	end.
+-endif.
 
 %% @doc Retrieve Hash(Key) from the data store.
 search(H, Count) 

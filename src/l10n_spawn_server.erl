@@ -26,7 +26,7 @@
 
 -export([start_link/1]).
 -export([init/1, terminate/2, 
-    handle_call/3]).
+    handle_call/3, handle_info/2]).
 %% Exported Client's Functions
 -export([find_store/2]).
 
@@ -43,6 +43,7 @@ start_link(Domain) ->
     gen_server:start_link({local, Name}, ?MODULE, Arguments, Opts).
 
 init([D]) ->
+    process_flag(trap_exit, true),
     E = ets:new(D:get_name('table'), []),
     {ok, #state{table=E, domain=D}}.
 
@@ -54,6 +55,10 @@ handle_call({'find_store', Locale}, _From, LoopData=#state{table=E, domain=D}) -
     Reply = lookup_store(Locale, E, D),
     {reply, Reply, LoopData}.
 
+handle_info({'EXIT', Pid, Reason}, LoopData=#state{table=E}) -> 
+    [[Key]] = ets:match(E, {'$1', Pid}),
+    ets:delete(E, Key),
+    {noreply, LoopData}.
     
 %%
 %% API
@@ -68,12 +73,19 @@ find_store(Domain, Locale) ->
 %% Server API
 %%
 
+spawn_store('root'=Locale, E, D) ->
+    {ok, Pid} = l10n_store_server:start_link(D, Locale),
+    ets:insert(E, {Locale, Pid}),
+    Pid;
+    
 spawn_store(Locale, E, D) ->
     Pid = case D:is_available(Locale) of
         true ->
+            % Load data from the file
             {ok, Pid2} = l10n_store_server:start_link(D, Locale),
             Pid2;
         false ->
+            % Link to my parent
             PLocale = l10n_locale:get_parent_locale(Locale),
             lookup_store(PLocale, E, D)
         end,

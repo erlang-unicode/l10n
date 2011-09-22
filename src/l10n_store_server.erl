@@ -28,7 +28,7 @@
 
 %% gen_server handlers
 -export([init/1, terminate/2, 
-    handle_call/3, handle_cast/2]).
+    handle_call/3, handle_cast/2, handle_info/2]).
 
 %% API
 -export([get_table/1, update_value/3]).
@@ -42,7 +42,11 @@
 start_link(D, L) ->
     Arguments = [D, L],
     Opts = [],
-    gen_server:start_link(?MODULE, Arguments, Opts).
+    gen_server:start_link({local, D:get_store_server_name(L)}, ?MODULE, Arguments, Opts).
+
+init([D, L='root']) ->
+    E = ets:new('l10n_root_store_table', [{'read_concurrency', true}]),
+    {ok, #state{table=E, locale=L, domain=D}};
 
 init([D, L]) ->
     E = ets:new('l10n_store_table', [{'read_concurrency', true}]),
@@ -61,21 +65,31 @@ handle_call('get_table', _From, LoopData=#state{table=E}) ->
 handle_cast('init_store', LoopData=#state{table=E, domain=D, locale=L}) ->
     % Get the copy of the parent table
     case l10n_locale:get_parent_locale(L) of
-    'root' -> ok;
-    X -> From = D:get_table(X),
+    'root' -> 
+        % If the root server was terminated, kill this server
+	    P = l10n_spawn_server:find_store(D, 'root'),
+        erlang:monitor('process', P);
+    X -> 
+        % If the parent server was terminated, kill this server
+	    P = l10n_spawn_server:find_store(D, X),
+        erlang:monitor('process', P),
+        From = get_table(P),
         l10n_utils:copy_table(From, E)
     end,
 
 
     PO = D:get_file('po', L),
     F = fun(Key, Value, EE) -> 
-            ets:insert(EE, {l10n_utils:hash(Key), Value})
+            ets:insert(EE, {l10n_utils:hash(Key), D:string_to_object(Value)})
         end,
     l10n_export:fold(F, E, PO),
     {'noreply', LoopData};
 handle_cast({'update_value', Key, Value}, LoopData=#state{table=E}) ->
     ets:insert(E, {Key, Value}),
     {'noreply', LoopData}.
+
+handle_info({'DOWN', Ref, 'process', _PPid,  Reason}, LoopData) -> 
+    {'stop', 'normal', LoopData}.
 
 
 %%
