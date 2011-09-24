@@ -49,6 +49,10 @@
 -define(L10N_RELOADER, list_to_atom(?MODULE_STRING ++ "_reloader")).
 -endif.
 
+-ifndef(L10N_SUP).
+-define(L10N_SUP, list_to_atom(?MODULE_STRING ++ "_sup")).
+-endif.
+
 -ifndef(L10N_TABLE).
 -define(L10N_TABLE, ?MODULE).
 -endif.
@@ -107,6 +111,7 @@ get_path(Type, Locale) ->
 get_name('domain') -> ?MODULE;
 get_name('table')  -> ?L10N_TABLE;
 get_name('reloader')  -> ?L10N_RELOADER;
+get_name('supervisor')  -> ?L10N_SUP;
 get_name('server') -> ?L10N_SERVER.
 
 %% @doc Get the name of l10n_store_server with locale=L.
@@ -144,7 +149,7 @@ format(Id, Params) ->
 	format(H, Id, Params).
 
 format(H, Id, Params) ->
-	Fmt = search(H, 5),
+	Fmt = search(H, Id, 5),
     i18n_message:format(Fmt, Params).
 -endif.
 	
