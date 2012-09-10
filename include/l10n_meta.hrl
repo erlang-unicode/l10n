@@ -18,7 +18,7 @@
 %%% $Id$
 %%%
 %%% @copyright 2010-2011 Michael Uvarov
-%%% @author Michael Uvarov <freeakk@gmail.com>
+%%% @author Michael Uvarov <arcusfelis@gmail.com>
 %%% =====================================================================
 
 -export([get_path/2, get_file/2, get_type/0, get_name/1, source_files/0,
